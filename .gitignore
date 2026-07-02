@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# local sandbox debug exports
+/.data/
+
 # next.js
 /.next/
 /out/
