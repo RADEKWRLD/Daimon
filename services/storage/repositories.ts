@@ -1,27 +1,28 @@
 import "server-only";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "@/db/client";
 import {
-  agentPrompts,
+  agentPersonas,
   emotionAssessments,
   messages,
+  personaChangeProposals,
+  personaResources,
+  personaSections,
   profiles,
-  promptVersions,
   questionnaireResponses,
   sessions,
   users,
 } from "@/db/schema";
 import { NotFoundError } from "@/lib/errors";
 import type {
-  ActivePromptDTO,
   ChatMessageRole,
   CommunicationPreferences,
   EmotionState,
-  PersonaSpec,
+  PersonaProposalOperation,
+  PersonaProposalTarget,
   ProfileSnapshot,
-  PromptGenerationTrace,
   QuestionnaireSummary,
   RiskFlags,
   UserId,
@@ -35,20 +36,31 @@ export type ProfileUpsertInput = {
   latestMemorySummary?: string | null;
 };
 
-export type PromptVersionInsertInput = {
-  agentPromptId: string;
-  systemPrompt: string;
-  personaSpec: PersonaSpec;
-  sourceProfileId: string | null;
-  createdBy: "ai" | "user";
-  generationTrace: PromptGenerationTrace;
-  safetyPolicyVersion: string;
-};
-
 export type RecentMessageDTO = {
   role: ChatMessageRole;
   content: string;
   createdAt: string;
+};
+
+export type PersonaBootstrapInput = {
+  name: string;
+  description: string;
+  roleBoundary: string;
+  crisisBoundary: string;
+  prohibitedMoves: string[];
+  sourceProfileId: string | null;
+  initialSections: Array<{ key: string; title: string; content: string }>;
+};
+
+export type ProposalInsertInput = {
+  personaId: string;
+  sessionId: string | null;
+  operation: PersonaProposalOperation;
+  targetType: PersonaProposalTarget;
+  targetId: string | null;
+  proposedTitle: string | null;
+  proposedContent: string | null;
+  reason: string;
 };
 
 export const sandboxRepository = {
@@ -183,198 +195,370 @@ export const sandboxRepository = {
     return assessment;
   },
 
-  async ensureAgentPrompt(viewerUserId: UserId, name = "Daimon") {
+  async getPersonaByUserId(viewerUserId: UserId) {
     const db = getDb();
-    await this.ensureUser(viewerUserId);
-
-    const [existing] = await db
+    const [persona] = await db
       .select()
-      .from(agentPrompts)
-      .where(eq(agentPrompts.userId, viewerUserId))
+      .from(agentPersonas)
+      .where(eq(agentPersonas.userId, viewerUserId))
       .limit(1);
 
-    if (existing) {
-      return existing;
-    }
-
-    const [created] = await db
-      .insert(agentPrompts)
-      .values({
-        userId: viewerUserId,
-        name,
-        status: "draft",
-      })
-      .returning();
-
-    return created;
+    return persona ?? null;
   },
 
-  async renameAgentPrompt(
+  async getOwnedPersona(viewerUserId: UserId, personaId: string) {
+    const db = getDb();
+    const [persona] = await db
+      .select()
+      .from(agentPersonas)
+      .where(
+        and(eq(agentPersonas.id, personaId), eq(agentPersonas.userId, viewerUserId)),
+      )
+      .limit(1);
+
+    if (!persona) {
+      throw new NotFoundError("Persona was not found in this sandbox.");
+    }
+
+    return persona;
+  },
+
+  async updatePersonaMeta(
     viewerUserId: UserId,
-    agentPromptId: string,
-    name: string,
+    personaId: string,
+    input: {
+      name?: string;
+      description?: string;
+      roleBoundary?: string;
+      crisisBoundary?: string;
+    },
   ) {
     const db = getDb();
-    await this.getOwnedAgentPrompt(viewerUserId, agentPromptId);
+    await this.getOwnedPersona(viewerUserId, personaId);
 
     const [updated] = await db
-      .update(agentPrompts)
-      .set({ name, updatedAt: new Date() })
-      .where(
-        and(
-          eq(agentPrompts.id, agentPromptId),
-          eq(agentPrompts.userId, viewerUserId),
-        ),
-      )
+      .update(agentPersonas)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(agentPersonas.id, personaId))
       .returning();
 
     return updated;
   },
 
-  async getOwnedAgentPrompt(viewerUserId: UserId, agentPromptId: string) {
-    const db = getDb();
-    const [prompt] = await db
-      .select()
-      .from(agentPrompts)
-      .where(
-        and(
-          eq(agentPrompts.id, agentPromptId),
-          eq(agentPrompts.userId, viewerUserId),
-        ),
-      )
-      .limit(1);
-
-    if (!prompt) {
-      throw new NotFoundError("Agent prompt was not found in this sandbox.");
-    }
-
-    return prompt;
-  },
-
-  async createPromptVersion(
+  async createPersonaIfMissing(
     viewerUserId: UserId,
-    input: PromptVersionInsertInput,
+    input: PersonaBootstrapInput,
   ) {
     const db = getDb();
-    await this.getOwnedAgentPrompt(viewerUserId, input.agentPromptId);
+    await this.ensureUser(viewerUserId);
 
-    const [latest] = await db
-      .select({ version: promptVersions.version })
-      .from(promptVersions)
-      .where(eq(promptVersions.agentPromptId, input.agentPromptId))
-      .orderBy(desc(promptVersions.version))
-      .limit(1);
+    const existing = await this.getPersonaByUserId(viewerUserId);
+    if (existing) {
+      return existing;
+    }
 
-    const nextVersion = (latest?.version ?? 0) + 1;
     const [created] = await db
-      .insert(promptVersions)
+      .insert(agentPersonas)
       .values({
-        agentPromptId: input.agentPromptId,
-        version: nextVersion,
-        systemPrompt: input.systemPrompt,
-        personaSpec: input.personaSpec,
+        userId: viewerUserId,
+        name: input.name,
+        description: input.description,
+        roleBoundary: input.roleBoundary,
+        crisisBoundary: input.crisisBoundary,
+        prohibitedMoves: input.prohibitedMoves,
         sourceProfileId: input.sourceProfileId,
-        createdBy: input.createdBy,
-        generationTrace: input.generationTrace,
-        safetyPolicyVersion: input.safetyPolicyVersion,
       })
       .returning();
 
-    await db
-      .update(agentPrompts)
-      .set({
-        activeVersionId: created.id,
-        status: "active",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(agentPrompts.id, input.agentPromptId),
-          eq(agentPrompts.userId, viewerUserId),
-        ),
+    if (input.initialSections.length > 0) {
+      await db.insert(personaSections).values(
+        input.initialSections.map((section) => ({
+          personaId: created.id,
+          key: section.key,
+          title: section.title,
+          content: section.content,
+          createdBy: "ai" as const,
+        })),
       );
+    }
 
     return created;
   },
 
-  async activatePromptVersion(viewerUserId: UserId, promptVersionId: string) {
+  async listPersonaSections(viewerUserId: UserId, personaId: string) {
     const db = getDb();
-    const [version] = await db
-      .select()
-      .from(promptVersions)
-      .where(eq(promptVersions.id, promptVersionId))
-      .limit(1);
-
-    if (!version) {
-      throw new NotFoundError("Prompt version was not found.");
-    }
-
-    await this.getOwnedAgentPrompt(viewerUserId, version.agentPromptId);
-
-    await db
-      .update(agentPrompts)
-      .set({
-        activeVersionId: version.id,
-        status: "active",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(agentPrompts.id, version.agentPromptId),
-          eq(agentPrompts.userId, viewerUserId),
-        ),
-      );
-
-    return version;
-  },
-
-  async listPromptVersions(viewerUserId: UserId, agentPromptId: string) {
-    const db = getDb();
-    await this.getOwnedAgentPrompt(viewerUserId, agentPromptId);
+    await this.getOwnedPersona(viewerUserId, personaId);
 
     return db
       .select()
-      .from(promptVersions)
-      .where(eq(promptVersions.agentPromptId, agentPromptId))
-      .orderBy(desc(promptVersions.version));
+      .from(personaSections)
+      .where(eq(personaSections.personaId, personaId))
+      .orderBy(personaSections.createdAt);
   },
 
-  async getActivePrompt(viewerUserId: UserId): Promise<ActivePromptDTO | null> {
+  async getOwnedSection(viewerUserId: UserId, sectionId: string) {
     const db = getDb();
-    const [prompt] = await db
+    const [section] = await db
       .select()
-      .from(agentPrompts)
-      .where(eq(agentPrompts.userId, viewerUserId))
+      .from(personaSections)
+      .where(eq(personaSections.id, sectionId))
       .limit(1);
 
-    if (!prompt?.activeVersionId) {
-      return null;
+    if (!section) {
+      throw new NotFoundError("Persona section was not found.");
     }
 
-    const [version] = await db
+    await this.getOwnedPersona(viewerUserId, section.personaId);
+
+    return section;
+  },
+
+  async createSection(
+    viewerUserId: UserId,
+    personaId: string,
+    input: { key: string; title: string; content: string; createdBy: "ai" | "user" },
+  ) {
+    const db = getDb();
+    await this.getOwnedPersona(viewerUserId, personaId);
+
+    const [created] = await db
+      .insert(personaSections)
+      .values({
+        personaId,
+        key: input.key,
+        title: input.title,
+        content: input.content,
+        createdBy: input.createdBy,
+      })
+      .returning();
+
+    return created;
+  },
+
+  async updateSection(
+    viewerUserId: UserId,
+    sectionId: string,
+    input: { title?: string; content?: string },
+  ) {
+    const db = getDb();
+    await this.getOwnedSection(viewerUserId, sectionId);
+
+    const [updated] = await db
+      .update(personaSections)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(personaSections.id, sectionId))
+      .returning();
+
+    return updated;
+  },
+
+  async deleteSection(viewerUserId: UserId, sectionId: string) {
+    const db = getDb();
+    await this.getOwnedSection(viewerUserId, sectionId);
+    await db.delete(personaSections).where(eq(personaSections.id, sectionId));
+  },
+
+  async listPersonaResources(
+    viewerUserId: UserId,
+    personaId: string,
+    sectionId?: string,
+  ) {
+    const db = getDb();
+    await this.getOwnedPersona(viewerUserId, personaId);
+
+    return db
       .select()
-      .from(promptVersions)
+      .from(personaResources)
+      .where(
+        sectionId
+          ? and(
+              eq(personaResources.personaId, personaId),
+              eq(personaResources.sectionId, sectionId),
+            )
+          : eq(personaResources.personaId, personaId),
+      )
+      .orderBy(personaResources.createdAt);
+  },
+
+  async getOwnedResource(viewerUserId: UserId, resourceId: string) {
+    const db = getDb();
+    const [resource] = await db
+      .select()
+      .from(personaResources)
+      .where(eq(personaResources.id, resourceId))
+      .limit(1);
+
+    if (!resource) {
+      throw new NotFoundError("Persona resource was not found.");
+    }
+
+    await this.getOwnedPersona(viewerUserId, resource.personaId);
+
+    return resource;
+  },
+
+  async createResource(
+    viewerUserId: UserId,
+    personaId: string,
+    input: {
+      sectionId: string | null;
+      title: string;
+      content: string;
+      createdBy: "ai" | "user";
+    },
+  ) {
+    const db = getDb();
+    await this.getOwnedPersona(viewerUserId, personaId);
+
+    const [created] = await db
+      .insert(personaResources)
+      .values({
+        personaId,
+        sectionId: input.sectionId,
+        title: input.title,
+        content: input.content,
+        createdBy: input.createdBy,
+      })
+      .returning();
+
+    return created;
+  },
+
+  async updateResource(
+    viewerUserId: UserId,
+    resourceId: string,
+    input: { title?: string; content?: string },
+  ) {
+    const db = getDb();
+    await this.getOwnedResource(viewerUserId, resourceId);
+
+    const [updated] = await db
+      .update(personaResources)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(personaResources.id, resourceId))
+      .returning();
+
+    return updated;
+  },
+
+  async deleteResource(viewerUserId: UserId, resourceId: string) {
+    const db = getDb();
+    await this.getOwnedResource(viewerUserId, resourceId);
+    await db.delete(personaResources).where(eq(personaResources.id, resourceId));
+  },
+
+  async createProposal(input: ProposalInsertInput) {
+    const db = getDb();
+    const [created] = await db
+      .insert(personaChangeProposals)
+      .values({
+        personaId: input.personaId,
+        sessionId: input.sessionId,
+        operation: input.operation,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        proposedTitle: input.proposedTitle,
+        proposedContent: input.proposedContent,
+        reason: input.reason,
+      })
+      .returning();
+
+    return created;
+  },
+
+  async getOwnedProposal(viewerUserId: UserId, proposalId: string) {
+    const db = getDb();
+    const [proposal] = await db
+      .select()
+      .from(personaChangeProposals)
+      .where(eq(personaChangeProposals.id, proposalId))
+      .limit(1);
+
+    if (!proposal) {
+      throw new NotFoundError("Persona change proposal was not found.");
+    }
+
+    await this.getOwnedPersona(viewerUserId, proposal.personaId);
+
+    return proposal;
+  },
+
+  async resolveProposal(
+    viewerUserId: UserId,
+    proposalId: string,
+    decision: "approved" | "rejected",
+  ) {
+    const db = getDb();
+    const proposal = await this.getOwnedProposal(viewerUserId, proposalId);
+
+    if (proposal.status !== "pending") {
+      throw new NotFoundError("This proposal has already been resolved.");
+    }
+
+    if (decision === "approved") {
+      if (proposal.targetType === "section") {
+        if (proposal.operation === "create") {
+          await this.createSection(viewerUserId, proposal.personaId, {
+            key: slugify(proposal.proposedTitle ?? "section"),
+            title: proposal.proposedTitle ?? "未命名章节",
+            content: proposal.proposedContent ?? "",
+            createdBy: "ai",
+          });
+        } else if (proposal.operation === "update" && proposal.targetId) {
+          await this.updateSection(viewerUserId, proposal.targetId, {
+            title: proposal.proposedTitle ?? undefined,
+            content: proposal.proposedContent ?? undefined,
+          });
+        } else if (proposal.operation === "delete" && proposal.targetId) {
+          await this.deleteSection(viewerUserId, proposal.targetId);
+        }
+      } else {
+        if (proposal.operation === "create") {
+          await this.createResource(viewerUserId, proposal.personaId, {
+            sectionId: null,
+            title: proposal.proposedTitle ?? "未命名资源",
+            content: proposal.proposedContent ?? "",
+            createdBy: "ai",
+          });
+        } else if (proposal.operation === "update" && proposal.targetId) {
+          await this.updateResource(viewerUserId, proposal.targetId, {
+            title: proposal.proposedTitle ?? undefined,
+            content: proposal.proposedContent ?? undefined,
+          });
+        } else if (proposal.operation === "delete" && proposal.targetId) {
+          await this.deleteResource(viewerUserId, proposal.targetId);
+        }
+      }
+    }
+
+    const [updated] = await db
+      .update(personaChangeProposals)
+      .set({ status: decision, resolvedAt: new Date() })
+      .where(eq(personaChangeProposals.id, proposalId))
+      .returning();
+
+    return updated;
+  },
+
+  async listRecentResolvedProposals(
+    viewerUserId: UserId,
+    personaId: string,
+    limit = 10,
+  ) {
+    const db = getDb();
+    await this.getOwnedPersona(viewerUserId, personaId);
+
+    return db
+      .select()
+      .from(personaChangeProposals)
       .where(
         and(
-          eq(promptVersions.id, prompt.activeVersionId),
-          eq(promptVersions.agentPromptId, prompt.id),
+          eq(personaChangeProposals.personaId, personaId),
+          inArray(personaChangeProposals.status, ["approved", "rejected"]),
         ),
       )
-      .limit(1);
-
-    if (!version) {
-      return null;
-    }
-
-    return {
-      agentPromptId: prompt.id,
-      promptVersionId: version.id,
-      name: prompt.name,
-      version: version.version,
-      systemPrompt: version.systemPrompt,
-      personaSpec: version.personaSpec,
-      safetyPolicyVersion: version.safetyPolicyVersion,
-    };
+      .orderBy(desc(personaChangeProposals.resolvedAt))
+      .limit(limit);
   },
 
   async createSession(viewerUserId: UserId, title = "New session") {
@@ -529,15 +713,21 @@ export const sandboxRepository = {
     await db
       .delete(emotionAssessments)
       .where(eq(emotionAssessments.userId, viewerUserId));
-    await db
-      .delete(promptVersions)
-      .where(
-        sql`${promptVersions.agentPromptId} in (select ${agentPrompts.id} from ${agentPrompts} where ${agentPrompts.userId} = ${viewerUserId})`,
-      );
-    await db.delete(agentPrompts).where(eq(agentPrompts.userId, viewerUserId));
+    // persona_sections/persona_resources/persona_change_proposals all cascade
+    // from agent_personas, so deleting the persona row is enough.
+    await db.delete(agentPersonas).where(eq(agentPersonas.userId, viewerUserId));
     await db.delete(profiles).where(eq(profiles.userId, viewerUserId));
   },
 };
+
+function slugify(text: string) {
+  const base = text
+    .toLowerCase()
+    .replace(/[^a-z0-9一-龥]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return `${base || "section"}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function profileToSnapshot(profile: typeof profiles.$inferSelect): ProfileSnapshot {
   return {

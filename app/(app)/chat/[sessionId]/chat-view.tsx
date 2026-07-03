@@ -1,18 +1,39 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import gsap from "gsap";
-import { Brain, Lock, Send, ShieldAlert, ShieldCheck } from "lucide-react";
+import {
+  Brain,
+  Check,
+  Lock,
+  Send,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+import { resolveProposalAction } from "./actions";
+
+type Proposal = {
+  id: string;
+  operation: "create" | "update" | "delete";
+  targetType: "section" | "resource";
+  proposedTitle: string | null;
+  proposedContent: string | null;
+  reason: string;
+};
+
 type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   createdAt: string;
+  proposals?: Proposal[];
 };
 
 type SafetyLevel = "none" | "watch" | "crisis";
@@ -116,8 +137,22 @@ export function ChatView({
           if (!data) continue;
 
           if (event === "done") {
-            const payload = JSON.parse(data) as { safetyLevel: SafetyLevel };
+            const payload = JSON.parse(data) as {
+              safetyLevel: SafetyLevel;
+              proposals: Proposal[];
+            };
             setSafetyLevel(payload.safetyLevel);
+
+            if (payload.proposals.length > 0) {
+              setMessages((prev) => {
+                const next = [...prev];
+                next[next.length - 1] = {
+                  ...next[next.length - 1],
+                  proposals: payload.proposals,
+                };
+                return next;
+              });
+            }
             continue;
           }
 
@@ -175,7 +210,12 @@ export function ChatView({
 
       <div ref={listRef} className="chat-scroll mx-auto flex w-full max-w-[720px] flex-1 flex-col gap-4 overflow-y-auto px-4 py-6">
         {messages.map((message, index) => (
-          <MessageBubble key={index} message={message} companionName={companionName} />
+          <div key={index} className="flex flex-col gap-2">
+            <MessageBubble message={message} companionName={companionName} />
+            {message.proposals?.map((proposal) => (
+              <ProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </div>
         ))}
 
         {messages.length > 0 && messages[messages.length - 1].role === "assistant" ? (
@@ -271,6 +311,67 @@ function MessageBubble({
           <Skeleton className="h-3 w-4/5" />
           <Skeleton className="h-3 w-2/3" />
         </div>
+      )}
+    </div>
+  );
+}
+
+const OPERATION_LABEL: Record<Proposal["operation"], string> = {
+  create: "创建",
+  update: "更新",
+  delete: "删除",
+};
+
+function ProposalCard({ proposal }: { proposal: Proposal }) {
+  const [status, setStatus] = useState<"pending" | "approved" | "rejected">("pending");
+  const [isPending, startTransition] = useTransition();
+
+  function handleDecision(decision: "approved" | "rejected") {
+    startTransition(async () => {
+      await resolveProposalAction(proposal.id, decision);
+      setStatus(decision);
+    });
+  }
+
+  return (
+    <div className="glass-panel ml-10 max-w-[85%] space-y-2 rounded-2xl border-l-4 border-l-primary p-4 text-sm">
+      <div className="flex items-center gap-2 font-medium">
+        <Sparkles className="size-4 text-primary" />
+        Daimon 想要{OPERATION_LABEL[proposal.operation]}章节「{proposal.proposedTitle ?? "未命名"}」
+      </div>
+      <p className="text-muted-foreground">{proposal.reason}</p>
+      {proposal.proposedContent ? (
+        <p className="rounded-lg bg-muted/60 p-2 text-xs whitespace-pre-wrap text-muted-foreground">
+          {proposal.proposedContent}
+        </p>
+      ) : null}
+
+      {status === "pending" ? (
+        <div className="flex gap-2 pt-1">
+          <Button
+            size="sm"
+            pill
+            disabled={isPending}
+            onClick={() => handleDecision("approved")}
+          >
+            <Check className="size-3.5" />
+            同意
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            pill
+            disabled={isPending}
+            onClick={() => handleDecision("rejected")}
+          >
+            <X className="size-3.5" />
+            拒绝
+          </Button>
+        </div>
+      ) : (
+        <p className="text-xs font-medium text-primary">
+          {status === "approved" ? "已同意，人格已更新" : "已拒绝"}
+        </p>
       )}
     </div>
   );

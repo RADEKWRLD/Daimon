@@ -46,9 +46,9 @@ export default async function DashboardPage() {
     );
   }
 
-  const activePrompt = await caller.prompt.getActivePrompt();
+  const persona = await caller.persona.getOverview();
 
-  if (!activePrompt) {
+  if (!persona) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 px-6 py-24 text-center">
         <div className="flex size-16 items-center justify-center rounded-full bg-secondary">
@@ -77,16 +77,16 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold">
           欢迎回来{profile.communicationPreferences.nickname ? `，${profile.communicationPreferences.nickname}` : ""}
         </h1>
-        <p className="text-muted-foreground">这是你与 {activePrompt.name} 的空间。</p>
+        <p className="text-muted-foreground">这是你与 {persona.name} 的空间。</p>
       </div>
 
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Brain className="size-4 text-primary" />
-            {activePrompt.name} · 第 {activePrompt.version} 版人格
+            {persona.name}
           </CardTitle>
-          <CardDescription>{activePrompt.personaSpec.roleBoundary}</CardDescription>
+          <CardDescription>{persona.description}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           {latestSession ? (

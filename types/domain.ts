@@ -1,7 +1,9 @@
 export type UserId = string;
 export type ProfileId = string;
-export type AgentPromptId = string;
-export type PromptVersionId = string;
+export type PersonaId = string;
+export type PersonaSectionId = string;
+export type PersonaResourceId = string;
+export type PersonaProposalId = string;
 export type SessionId = string;
 
 export type ChatMessageRole = "user" | "assistant" | "system";
@@ -52,30 +54,60 @@ export type ProfileSnapshot = {
   updatedAt: string;
 };
 
-export type PersonaSpec = {
-  displayName: string;
-  roleBoundary: string;
-  toneRules: string[];
-  supportMoves: string[];
-  prohibitedMoves: string[];
-  crisisBoundary: string;
-};
-
-export type PromptGenerationTrace = {
-  toolNames: string[];
-  sourceProfileId: ProfileId;
-  generatedAt: string;
-  safetyPolicyVersion: string;
-};
-
-export type ActivePromptDTO = {
-  agentPromptId: AgentPromptId;
-  promptVersionId: PromptVersionId;
+// Tier 1: always-mounted persona metadata + non-negotiable safety
+// boundaries. No agent tool is ever given write access to roleBoundary /
+// crisisBoundary / prohibitedMoves - see services/persona/tools.ts.
+export type PersonaOverview = {
+  personaId: PersonaId;
   name: string;
-  version: number;
-  systemPrompt: string;
-  personaSpec: PersonaSpec;
-  safetyPolicyVersion: string;
+  description: string;
+  roleBoundary: string;
+  crisisBoundary: string;
+  prohibitedMoves: string[];
+  sectionTitles: Array<{ id: PersonaSectionId; key: string; title: string }>;
+  updatedAt: string;
+};
+
+// Tier 2: persona content, fetched on demand rather than embedded in the
+// system prompt every turn.
+export type PersonaSection = {
+  id: PersonaSectionId;
+  personaId: PersonaId;
+  key: string;
+  title: string;
+  content: string;
+  createdBy: "ai" | "user";
+  updatedAt: string;
+};
+
+// Tier 3: supplementary material referenced from section content.
+export type PersonaResource = {
+  id: PersonaResourceId;
+  personaId: PersonaId;
+  sectionId: PersonaSectionId | null;
+  title: string;
+  content: string;
+  createdBy: "ai" | "user";
+  updatedAt: string;
+};
+
+export type PersonaProposalOperation = "create" | "update" | "delete";
+export type PersonaProposalTarget = "section" | "resource";
+export type PersonaProposalStatus = "pending" | "approved" | "rejected";
+
+export type PersonaChangeProposal = {
+  id: PersonaProposalId;
+  personaId: PersonaId;
+  sessionId: SessionId | null;
+  operation: PersonaProposalOperation;
+  targetType: PersonaProposalTarget;
+  targetId: string | null;
+  proposedTitle: string | null;
+  proposedContent: string | null;
+  reason: string;
+  status: PersonaProposalStatus;
+  createdAt: string;
+  resolvedAt: string | null;
 };
 
 export type SafetyLevel = "none" | "watch" | "crisis";

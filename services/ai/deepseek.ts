@@ -1,19 +1,46 @@
 import "server-only";
 
-export type DeepSeekMessage = {
-  role: "system" | "user" | "assistant";
-  content: string;
+export type DeepSeekToolCallRequest = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
 };
 
+export type DeepSeekMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: DeepSeekToolCallRequest[] }
+  | { role: "tool"; content: string; tool_call_id: string };
+
+export type DeepSeekToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+export type DeepSeekToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+};
+
+export type DeepSeekTurnEvent =
+  | { type: "content"; delta: string }
+  | { type: "done"; finishReason: string; toolCalls: DeepSeekToolCall[] };
+
 /**
- * Requests a streamed completion from DeepSeek and returns an async
- * generator yielding content deltas as they arrive from the upstream SSE
- * response. Returns null (instead of a generator) when no API key is
- * configured, so callers can fall back before any request is made.
+ * Requests a streamed completion (optionally with tool definitions) from
+ * DeepSeek and returns an async generator of turn events. Content deltas are
+ * forwarded as they arrive; tool-call fragments are accumulated internally
+ * and reported once as part of the final "done" event. Returns null (instead
+ * of a generator) when no API key is configured.
  */
-export async function streamDeepSeekReply(
+export async function streamDeepSeekTurn(
   messages: DeepSeekMessage[],
-): Promise<AsyncGenerator<string> | null> {
+  tools?: DeepSeekToolDefinition[],
+): Promise<AsyncGenerator<DeepSeekTurnEvent> | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     return null;
@@ -31,6 +58,7 @@ export async function streamDeepSeekReply(
       temperature: 0.6,
       max_tokens: 800,
       stream: true,
+      ...(tools && tools.length > 0 ? { tools } : {}),
     }),
   });
 
@@ -38,15 +66,30 @@ export async function streamDeepSeekReply(
     throw new Error(`DeepSeek request failed with status ${response.status}.`);
   }
 
-  return readDeepSeekEventStream(response.body);
+  return readDeepSeekTurnStream(response.body);
 }
 
-async function* readDeepSeekEventStream(
+async function* readDeepSeekTurnStream(
   body: ReadableStream<Uint8Array>,
-): AsyncGenerator<string> {
+): AsyncGenerator<DeepSeekTurnEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let finishReason = "stop";
+  const toolCallAccumulator = new Map<
+    number,
+    { id?: string; name?: string; arguments: string }
+  >();
+
+  const finish = () => ({
+    type: "done" as const,
+    finishReason,
+    toolCalls: [...toolCallAccumulator.values()]
+      .filter((call): call is { id: string; name: string; arguments: string } =>
+        Boolean(call.id && call.name),
+      )
+      .map((call) => ({ id: call.id, name: call.name, arguments: call.arguments })),
+  });
 
   while (true) {
     const { done, value } = await reader.read();
@@ -61,17 +104,58 @@ async function* readDeepSeekEventStream(
       if (!trimmed.startsWith("data:")) continue;
 
       const payload = trimmed.slice(5).trim();
-      if (payload === "[DONE]") return;
+      if (payload === "[DONE]") {
+        yield finish();
+        return;
+      }
 
       try {
         const parsed = JSON.parse(payload) as {
-          choices?: Array<{ delta?: { content?: string } }>;
+          choices?: Array<{
+            delta?: {
+              content?: string | null;
+              tool_calls?: Array<{
+                index?: number;
+                id?: string;
+                function?: { name?: string; arguments?: string };
+              }>;
+            };
+            finish_reason?: string | null;
+          }>;
         };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) yield delta;
+
+        const choice = parsed.choices?.[0];
+        const delta = choice?.delta;
+
+        if (delta?.content) {
+          yield { type: "content", delta: delta.content };
+        }
+
+        if (delta?.tool_calls) {
+          for (const toolCallDelta of delta.tool_calls) {
+            const index = toolCallDelta.index ?? 0;
+            const existing = toolCallAccumulator.get(index) ?? { arguments: "" };
+
+            if (toolCallDelta.id) existing.id = toolCallDelta.id;
+            if (toolCallDelta.function?.name) {
+              existing.name = toolCallDelta.function.name;
+            }
+            if (toolCallDelta.function?.arguments) {
+              existing.arguments += toolCallDelta.function.arguments;
+            }
+
+            toolCallAccumulator.set(index, existing);
+          }
+        }
+
+        if (choice?.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
       } catch {
         // Ignore malformed keep-alive lines from the upstream stream.
       }
     }
   }
+
+  yield finish();
 }

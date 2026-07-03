@@ -12,8 +12,8 @@ export default async function ChatSessionPage({
   const { sessionId } = await params;
   const caller = await createServerCaller();
 
-  const [activePrompt, initialMessages] = await Promise.all([
-    caller.prompt.getActivePrompt(),
+  const [persona, initialMessages] = await Promise.all([
+    caller.persona.getOverview(),
     caller.session.getMessages({ sessionId }).catch(() => null),
   ]);
 
@@ -21,14 +21,14 @@ export default async function ChatSessionPage({
     redirect("/sessions");
   }
 
-  if (!activePrompt) {
+  if (!persona) {
     redirect("/profile");
   }
 
   return (
     <ChatView
       sessionId={sessionId}
-      companionName={activePrompt.name}
+      companionName={persona.name}
       initialMessages={initialMessages}
     />
   );

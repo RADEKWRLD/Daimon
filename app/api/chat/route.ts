@@ -21,10 +21,7 @@ export async function POST(request: Request) {
   try {
     const result = await chatService.streamChatTurn(user.id, parsed.data);
 
-    return streamAsSSE(result.deltas, {
-      safetyLevel: result.safety.level,
-      promptVersionId: result.promptVersionId ?? "",
-    });
+    return streamAsSSE(result);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unexpected chat service error.";
@@ -33,19 +30,24 @@ export async function POST(request: Request) {
   }
 }
 
-function streamAsSSE(
-  deltas: AsyncGenerator<string>,
-  done: { safetyLevel: string; promptVersionId: string },
-) {
+function streamAsSSE(result: Awaited<ReturnType<typeof chatService.streamChatTurn>>) {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      for await (const delta of deltas) {
+      for await (const delta of result.deltas) {
         controller.enqueue(encoder.encode(sseEvent(undefined, { delta })));
       }
 
-      controller.enqueue(encoder.encode(sseEvent("done", done)));
+      controller.enqueue(
+        encoder.encode(
+          sseEvent("done", {
+            safetyLevel: result.safety.level,
+            personaId: result.personaId ?? "",
+            proposals: result.proposals,
+          }),
+        ),
+      );
       controller.close();
     },
   });

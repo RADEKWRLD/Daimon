@@ -6,6 +6,6 @@ import { createServerCaller } from "@/server/caller";
 
 export async function generatePersonaDraftAction() {
   const caller = await createServerCaller();
-  await caller.prompt.generateDraft({});
+  await caller.persona.createInitialPersona({});
   redirect("/persona");
 }

@@ -4,30 +4,51 @@ import { revalidatePath } from "next/cache";
 
 import { createServerCaller } from "@/server/caller";
 
-export async function saveDraftAction(formData: FormData) {
+export async function updateOverviewAction(formData: FormData) {
   const caller = await createServerCaller();
-  const activePrompt = await caller.prompt.getActivePrompt();
+  const personaId = String(formData.get("personaId"));
 
-  if (!activePrompt) {
-    throw new Error("没有找到可编辑的人格草稿。");
-  }
-
-  const name = String(formData.get("name") ?? activePrompt.name);
-  const systemPrompt = String(formData.get("systemPrompt") ?? "");
-
-  await caller.prompt.updateDraft({
-    agentPromptId: activePrompt.agentPromptId,
-    name,
-    systemPrompt,
-    personaSpec: activePrompt.personaSpec,
+  await caller.persona.updateOverview({
+    personaId,
+    description: String(formData.get("description") ?? ""),
+    roleBoundary: String(formData.get("roleBoundary") ?? ""),
+    crisisBoundary: String(formData.get("crisisBoundary") ?? ""),
   });
 
   revalidatePath("/persona");
 }
 
-export async function activateVersionAction(formData: FormData) {
-  const promptVersionId = String(formData.get("promptVersionId"));
+export async function createSectionAction(formData: FormData) {
   const caller = await createServerCaller();
-  await caller.prompt.activateVersion({ promptVersionId });
+  const personaId = String(formData.get("personaId"));
+
+  await caller.persona.createSection({
+    personaId,
+    title: String(formData.get("title") ?? ""),
+    content: String(formData.get("content") ?? ""),
+  });
+
+  revalidatePath("/persona");
+}
+
+export async function updateSectionAction(formData: FormData) {
+  const caller = await createServerCaller();
+
+  await caller.persona.updateSection({
+    sectionId: String(formData.get("sectionId")),
+    title: String(formData.get("title") ?? ""),
+    content: String(formData.get("content") ?? ""),
+  });
+
+  revalidatePath("/persona");
+}
+
+export async function deleteSectionAction(formData: FormData) {
+  const caller = await createServerCaller();
+
+  await caller.persona.deleteSection({
+    sectionId: String(formData.get("sectionId")),
+  });
+
   revalidatePath("/persona");
 }

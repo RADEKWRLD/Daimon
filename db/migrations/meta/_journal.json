@@ -15,6 +15,20 @@
       "when": 1783048208755,
       "tag": "0001_auth_password_and_history_pref",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783061655943,
+      "tag": "0002_drop_prompt_versioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783062581852,
+      "tag": "0003_add_layered_persona_system",
+      "breakpoints": true
     }
   ]
 }
