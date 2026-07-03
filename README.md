@@ -34,17 +34,17 @@ Daimon 是一个个人情绪支持陪伴 Agent 原型。产品形象是一只温
 
 ```mermaid
 flowchart TD
-  User[用户浏览器]
-  App[Next.js App Router 页面和组件]
-  Actions[Server Actions]
-  TRPC[tRPC Routers]
-  ChatAPI[/api/chat SSE Route]
-  Services[业务服务层]
-  Safety[Safety Gate]
-  PersonaTools[Persona Tool Dispatcher]
-  DeepSeek[DeepSeek Streaming API]
-  Repo[Scoped Repositories]
-  DB[(Neon/Postgres)]
+  User["用户浏览器"]
+  App["Next.js App Router 页面和组件"]
+  Actions["Server Actions"]
+  TRPC["tRPC Routers"]
+  ChatAPI["/api/chat SSE Route"]
+  Services["业务服务层"]
+  Safety["Safety Gate"]
+  PersonaTools["Persona Tool Dispatcher"]
+  DeepSeek["DeepSeek Streaming API"]
+  Repo["Scoped Repositories"]
+  DB[("Neon/Postgres")]
 
   User --> App
   App --> Actions
