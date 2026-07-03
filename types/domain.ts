@@ -32,6 +32,7 @@ export type CommunicationPreferences = {
   tone: "gentle" | "direct" | "warm" | "structured";
   responseLength: "short" | "medium" | "long";
   askBeforeAdvice: boolean;
+  storeSessionHistory: boolean;
 };
 
 export type RiskFlags = {

@@ -17,4 +17,8 @@ export const profileService = {
   ) {
     return sandboxRepository.upsertProfile(viewerUserId, input);
   },
+
+  async deleteAllData(viewerUserId: UserId) {
+    await sandboxRepository.deleteAllUserData(viewerUserId);
+  },
 };

@@ -38,7 +38,8 @@ export const messageRoleEnum = pgEnum("message_role", [
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
-  email: text("email"),
+  email: text("email").unique(),
+  passwordHash: text("password_hash"),
   name: text("name"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

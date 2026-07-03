@@ -8,6 +8,13 @@
       "when": 1782982452923,
       "tag": "0000_sandbox_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783048208755,
+      "tag": "0001_auth_password_and_history_pref",
+      "breakpoints": true
     }
   ]
 }

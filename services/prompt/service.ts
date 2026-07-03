@@ -16,6 +16,10 @@ export const promptService = {
     return sandboxRepository.getActivePrompt(viewerUserId);
   },
 
+  async listVersions(viewerUserId: UserId, agentPromptId: string) {
+    return sandboxRepository.listPromptVersions(viewerUserId, agentPromptId);
+  },
+
   async generateDraft(
     viewerUserId: UserId,
     input: z.infer<typeof generatePromptDraftInputSchema>,

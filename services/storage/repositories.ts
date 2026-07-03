@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { getDb } from "@/db/client";
 import {
@@ -58,6 +58,48 @@ export const sandboxRepository = {
       .insert(users)
       .values({ id: viewerUserId })
       .onConflictDoNothing();
+  },
+
+  async getUserById(viewerUserId: UserId) {
+    const db = getDb();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, viewerUserId))
+      .limit(1);
+
+    return user ?? null;
+  },
+
+  async findUserByEmail(email: string) {
+    const db = getDb();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    return user ?? null;
+  },
+
+  async createUserWithPassword(input: {
+    id: string;
+    email: string;
+    passwordHash: string;
+    name?: string | null;
+  }) {
+    const db = getDb();
+    const [user] = await db
+      .insert(users)
+      .values({
+        id: input.id,
+        email: input.email,
+        passwordHash: input.passwordHash,
+        name: input.name ?? null,
+      })
+      .returning();
+
+    return user;
   },
 
   async upsertProfile(viewerUserId: UserId, input: ProfileUpsertInput) {
@@ -286,6 +328,17 @@ export const sandboxRepository = {
     return version;
   },
 
+  async listPromptVersions(viewerUserId: UserId, agentPromptId: string) {
+    const db = getDb();
+    await this.getOwnedAgentPrompt(viewerUserId, agentPromptId);
+
+    return db
+      .select()
+      .from(promptVersions)
+      .where(eq(promptVersions.agentPromptId, agentPromptId))
+      .orderBy(desc(promptVersions.version));
+  },
+
   async getActivePrompt(viewerUserId: UserId): Promise<ActivePromptDTO | null> {
     const db = getDb();
     const [prompt] = await db
@@ -350,6 +403,34 @@ export const sandboxRepository = {
     return session ?? null;
   },
 
+  async listSessions(viewerUserId: UserId) {
+    const db = getDb();
+
+    const sessionRows = await db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.userId, viewerUserId))
+      .orderBy(desc(sessions.updatedAt));
+
+    const messageCounts = await db
+      .select({
+        sessionId: messages.sessionId,
+        count: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(messages)
+      .where(eq(messages.userId, viewerUserId))
+      .groupBy(messages.sessionId);
+
+    const countBySessionId = new Map(
+      messageCounts.map((row) => [row.sessionId, row.count]),
+    );
+
+    return sessionRows.map((session) => ({
+      ...session,
+      messageCount: countBySessionId.get(session.id) ?? 0,
+    }));
+  },
+
   async appendMessage(
     viewerUserId: UserId,
     sessionId: string,
@@ -407,6 +488,54 @@ export const sandboxRepository = {
       content: message.content,
       createdAt: message.createdAt.toISOString(),
     }));
+  },
+
+  async getMessages(
+    viewerUserId: UserId,
+    sessionId: string,
+    limit = 50,
+  ): Promise<RecentMessageDTO[]> {
+    const db = getDb();
+    const session = await this.getSession(viewerUserId, sessionId);
+
+    if (!session) {
+      throw new NotFoundError("Session was not found in this sandbox.");
+    }
+
+    const recent = await db
+      .select()
+      .from(messages)
+      .where(
+        and(eq(messages.userId, viewerUserId), eq(messages.sessionId, sessionId)),
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+
+    return recent.reverse().map((message) => ({
+      role: message.role,
+      content: message.content,
+      createdAt: message.createdAt.toISOString(),
+    }));
+  },
+
+  async deleteAllUserData(viewerUserId: UserId) {
+    const db = getDb();
+
+    await db.delete(messages).where(eq(messages.userId, viewerUserId));
+    await db.delete(sessions).where(eq(sessions.userId, viewerUserId));
+    await db
+      .delete(questionnaireResponses)
+      .where(eq(questionnaireResponses.userId, viewerUserId));
+    await db
+      .delete(emotionAssessments)
+      .where(eq(emotionAssessments.userId, viewerUserId));
+    await db
+      .delete(promptVersions)
+      .where(
+        sql`${promptVersions.agentPromptId} in (select ${agentPrompts.id} from ${agentPrompts} where ${agentPrompts.userId} = ${viewerUserId})`,
+      );
+    await db.delete(agentPrompts).where(eq(agentPrompts.userId, viewerUserId));
+    await db.delete(profiles).where(eq(profiles.userId, viewerUserId));
   },
 };
 

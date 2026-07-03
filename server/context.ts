@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth";
 
 export type TRPCContext = {
-  request: Request;
+  request?: Request;
   user: AuthenticatedUser | null;
 };
 

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   activatePromptVersionInputSchema,
   generatePromptDraftInputSchema,
@@ -11,6 +13,12 @@ export const promptRouter = createTRPCRouter({
   getActivePrompt: protectedProcedure.query(({ ctx }) =>
     promptService.getActivePrompt(ctx.user.id),
   ),
+
+  listVersions: protectedProcedure
+    .input(z.object({ agentPromptId: z.string().uuid() }))
+    .query(({ ctx, input }) =>
+      promptService.listVersions(ctx.user.id, input.agentPromptId),
+    ),
 
   generateDraft: protectedProcedure
     .input(generatePromptDraftInputSchema)

@@ -44,6 +44,7 @@ export const questionnaireService = {
       tone: normalizeTone(responses.tone),
       responseLength: normalizeResponseLength(responses.responseLength),
       askBeforeAdvice: responses.askBeforeAdvice !== "false",
+      storeSessionHistory: responses.storeSessionHistory !== "false",
     };
 
     const riskFlags: RiskFlags = {

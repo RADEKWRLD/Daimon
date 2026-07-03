@@ -14,4 +14,14 @@ export const sessionRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       sandboxRepository.createSession(ctx.user.id, input.title),
     ),
+
+  list: protectedProcedure.query(({ ctx }) =>
+    sandboxRepository.listSessions(ctx.user.id),
+  ),
+
+  getMessages: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .query(({ ctx, input }) =>
+      sandboxRepository.getMessages(ctx.user.id, input.sessionId),
+    ),
 });

@@ -13,4 +13,8 @@ export const profileRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       profileService.upsertCurrentProfile(ctx.user.id, input),
     ),
+
+  deleteAllData: protectedProcedure.mutation(({ ctx }) =>
+    profileService.deleteAllData(ctx.user.id),
+  ),
 });

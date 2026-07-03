@@ -20,6 +20,7 @@ export const communicationPreferencesSchema = z.object({
   tone: z.enum(["gentle", "direct", "warm", "structured"]),
   responseLength: z.enum(["short", "medium", "long"]),
   askBeforeAdvice: z.boolean(),
+  storeSessionHistory: z.boolean().default(true),
 });
 
 export const riskFlagsSchema = z.object({
