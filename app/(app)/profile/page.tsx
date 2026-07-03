@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Sparkles, ShieldCheck, Quote, Pencil } from "lucide-react";
+import { Sparkles, ShieldCheck, Quote, Pencil, Compass } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,22 +68,81 @@ export default async function ProfilePage() {
               </Button>
             </Link>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {questionnaireSummary.primaryConcerns.length > 0 ? (
-              questionnaireSummary.primaryConcerns.map((concern) => (
-                <span
-                  key={concern}
-                  className="rounded-full border border-primary/20 bg-secondary px-3 py-1 text-sm text-primary"
-                >
-                  {concern}
-                </span>
-              ))
-            ) : (
-              <p className="text-sm text-muted-foreground">暂未填写</p>
-            )}
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {questionnaireSummary.primaryConcerns.length > 0 ? (
+                questionnaireSummary.primaryConcerns.map((concern) => (
+                  <span
+                    key={concern}
+                    className="rounded-full border border-primary/20 bg-secondary px-3 py-1 text-sm text-primary"
+                  >
+                    {concern}
+                  </span>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">暂未填写</p>
+              )}
+            </div>
+            {questionnaireSummary.avoidances.length > 0 ? (
+              <div className="space-y-1.5 border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground">暂时不触及的话题</p>
+                <div className="flex flex-wrap gap-2">
+                  {questionnaireSummary.avoidances.map((topic) => (
+                    <span
+                      key={topic}
+                      className="rounded-full border border-border bg-muted/60 px-3 py-1 text-sm text-muted-foreground"
+                    >
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>
+
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Compass className="size-4 text-primary" />
+            生活与目标
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <InfoRow label="居住情况" value={questionnaireSummary.livingSituation} />
+          <InfoRow
+            label="支持网络"
+            value={
+              questionnaireSummary.supportNetwork.length > 0
+                ? questionnaireSummary.supportNetwork.join("、")
+                : "暂未填写"
+            }
+          />
+          <InfoRow
+            label="睡眠"
+            value={`质量 ${questionnaireSummary.sleepQuality}/10 · ${questionnaireSummary.sleepPattern}`}
+          />
+          <InfoRow label="既往咨询经历" value={questionnaireSummary.pastCounseling} />
+          <InfoRow
+            label="应对方式"
+            value={
+              questionnaireSummary.copingStrategies.length > 0
+                ? questionnaireSummary.copingStrategies.join("、")
+                : "暂未填写"
+            }
+          />
+          <InfoRow
+            label="使用目标"
+            value={
+              questionnaireSummary.usageGoals.length > 0
+                ? questionnaireSummary.usageGoals.join("、")
+                : "暂未填写"
+            }
+          />
+          <InfoRow label="期望互动频率" value={questionnaireSummary.checkInFrequency} />
+        </CardContent>
+      </Card>
 
       {questionnaireSummary.freeformSummary ? (
         <Card className="glass-card">
@@ -125,12 +184,25 @@ export default async function ProfilePage() {
             <Sparkles className="size-4" />
           </Button>
         </form>
-        <div>
+        <div className="space-y-1">
           <Link href="/questionnaire" className="text-sm text-muted-foreground hover:text-primary">
             重新填写问卷
           </Link>
+          <p className="text-xs text-muted-foreground">
+            如果你已经生成过人格，重新填写会更新情绪画像，
+            以及人格里由问卷生成的背景、沟通风格、支持方式章节。
+          </p>
         </div>
       </div>
     </Reveal>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-border/60 pb-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
+    </div>
   );
 }

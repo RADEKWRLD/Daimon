@@ -6,6 +6,14 @@ export const questionnaireSummarySchema = z.object({
   preferredSupport: z.array(z.string()).default([]),
   avoidances: z.array(z.string()).default([]),
   freeformSummary: z.string().default(""),
+  livingSituation: z.string().default("未填写"),
+  supportNetwork: z.array(z.string()).default([]),
+  sleepQuality: z.number().int().min(0).max(10).default(5),
+  sleepPattern: z.string().default("未填写"),
+  pastCounseling: z.string().default("未填写"),
+  copingStrategies: z.array(z.string()).default([]),
+  usageGoals: z.array(z.string()).default([]),
+  checkInFrequency: z.string().default("未填写"),
 });
 
 export const emotionStateSchema = z.object({

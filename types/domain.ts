@@ -20,6 +20,14 @@ export type QuestionnaireSummary = {
   preferredSupport: string[];
   avoidances: string[];
   freeformSummary: string;
+  livingSituation: string;
+  supportNetwork: string[];
+  sleepQuality: number;
+  sleepPattern: string;
+  pastCounseling: string;
+  copingStrategies: string[];
+  usageGoals: string[];
+  checkInFrequency: string;
 };
 
 export type EmotionState = {

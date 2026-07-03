@@ -1,5 +1,6 @@
 import "server-only";
 
+import { buildSeededSectionContents, type SeededSectionKey } from "@/services/persona/templates";
 import { checkSafety } from "@/services/safety/service";
 import { sandboxRepository } from "@/services/storage/repositories";
 import type {
@@ -30,6 +31,14 @@ export const questionnaireService = {
         responses.summary ??
         responses.freeformSummary ??
         "No freeform questionnaire summary was provided.",
+      livingSituation: responses.livingSituation || "未填写",
+      supportNetwork: extractList(responses.supportNetwork),
+      sleepQuality: parseScore(responses.sleepQuality, 5),
+      sleepPattern: responses.sleepPattern || "未填写",
+      pastCounseling: responses.pastCounseling || "未填写",
+      copingStrategies: extractList(responses.copingStrategies),
+      usageGoals: extractList(responses.usageGoals),
+      checkInFrequency: responses.checkInFrequency || "未填写",
     };
 
     const emotionState: EmotionState = {
@@ -72,9 +81,41 @@ export const questionnaireService = {
       emotionState,
     );
 
+    await resyncSeededPersonaSections(viewerUserId, profile);
+
     return profile;
   },
 };
+
+/**
+ * If the user already has a persona (i.e. this is a requestionnaire, not the
+ * first submission), overwrite the three questionnaire-seeded sections with
+ * freshly generated content. This is a direct write (not a propose_*
+ * proposal) because it's a direct result of the user's own form submission,
+ * equivalent in kind to the user editing a section by hand in the persona
+ * manager UI.
+ */
+async function resyncSeededPersonaSections(
+  viewerUserId: UserId,
+  profile: Parameters<typeof buildSeededSectionContents>[0],
+) {
+  const persona = await sandboxRepository.getPersonaByUserId(viewerUserId);
+  if (!persona) {
+    return;
+  }
+
+  const sections = await sandboxRepository.listPersonaSections(viewerUserId, persona.id);
+  const seededContents = buildSeededSectionContents(profile);
+
+  for (const key of Object.keys(seededContents) as SeededSectionKey[]) {
+    const section = sections.find((candidate) => candidate.key === key);
+    if (!section) continue;
+
+    await sandboxRepository.updateSection(viewerUserId, section.id, {
+      content: seededContents[key],
+    });
+  }
+}
 
 function extractList(value?: string) {
   if (!value) {

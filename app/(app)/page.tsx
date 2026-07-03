@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Brain,
   MessageSquare,
+  RefreshCw,
   Settings,
   Siren,
   Sparkles,
@@ -71,6 +72,11 @@ export default async function DashboardPage() {
   const sessions = await caller.session.list();
   const latestSession = sessions[0] ?? null;
 
+  const daysSinceAssessment = Math.floor(
+    (Date.now() - new Date(profile.updatedAt).getTime()) / 86_400_000,
+  );
+  const showReassessmentNudge = daysSinceAssessment >= 14;
+
   return (
     <Reveal className="mx-auto max-w-3xl space-y-6 px-6 py-10">
       <div>
@@ -78,6 +84,15 @@ export default async function DashboardPage() {
           欢迎回来{profile.communicationPreferences.nickname ? `，${profile.communicationPreferences.nickname}` : ""}
         </h1>
         <p className="text-muted-foreground">这是你与 {persona.name} 的空间。</p>
+        {showReassessmentNudge ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            距离上次评估已经 {daysSinceAssessment} 天了，
+            <Link href="/questionnaire" className="text-primary hover:underline">
+              随时可以重新做一次
+            </Link>
+            。
+          </p>
+        ) : null}
       </div>
 
       <Card className="glass-card">
@@ -112,9 +127,10 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <QuickLink href="/sessions" icon={MessageSquare} label="会话历史" />
         <QuickLink href="/persona" icon={Brain} label="人格编辑" />
+        <QuickLink href="/questionnaire" icon={RefreshCw} label="重新评估" />
         <QuickLink href="/settings" icon={Settings} label="设置" />
         <QuickLink href="/crisis" icon={Siren} label="危机资源" danger />
       </div>

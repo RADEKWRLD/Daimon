@@ -35,7 +35,27 @@ const CONCERN_OPTIONS = [
 
 const SUPPORT_OPTIONS = ["倾听与陪伴", "具体的建议", "情绪共情", "行动规划"];
 
-const TOTAL_STEPS = 5;
+const LIVING_SITUATION_OPTIONS = ["独居", "与家人同住", "与伴侣同住", "与室友同住", "其他"];
+const SUPPORT_NETWORK_OPTIONS = ["家人", "伴侣", "朋友", "同事", "暂时没有人"];
+const SLEEP_PATTERN_OPTIONS = ["规律", "不太规律", "很不规律"];
+const PAST_COUNSELING_OPTIONS = ["没有", "曾经有过", "正在进行中"];
+const COPING_STRATEGY_OPTIONS = [
+  "运动",
+  "冥想或呼吸练习",
+  "写日记",
+  "找人倾诉",
+  "其他方式",
+  "暂时没有特别的方式",
+];
+const USAGE_GOAL_OPTIONS = [
+  "想有人倾听",
+  "想学习应对压力的方法",
+  "想记录和追踪情绪变化",
+  "只是想说说话",
+];
+const CHECK_IN_FREQUENCY_OPTIONS = ["每天", "每周几次", "需要的时候才聊", "还不确定"];
+
+const TOTAL_STEPS = 7;
 
 type Answers = {
   mood: string;
@@ -45,6 +65,14 @@ type Answers = {
   stressors: string;
   support: string[];
   avoidances: string;
+  livingSituation: string;
+  supportNetwork: string[];
+  sleepQuality: number;
+  sleepPattern: string;
+  pastCounseling: string;
+  copingStrategies: string[];
+  usageGoals: string[];
+  checkInFrequency: string;
   nickname: string;
   tone: "gentle" | "direct" | "warm" | "structured";
   responseLength: "short" | "medium" | "long";
@@ -61,6 +89,14 @@ const initialAnswers: Answers = {
   stressors: "",
   support: [],
   avoidances: "",
+  livingSituation: "",
+  supportNetwork: [],
+  sleepQuality: 5,
+  sleepPattern: "",
+  pastCounseling: "",
+  copingStrategies: [],
+  usageGoals: [],
+  checkInFrequency: "",
   nickname: "",
   tone: "gentle",
   responseLength: "medium",
@@ -90,7 +126,10 @@ export function QuestionnaireWizard() {
     });
   }, [step]);
 
-  function toggleInArray(key: "concerns" | "support", value: string) {
+  function toggleInArray(
+    key: "concerns" | "support" | "supportNetwork" | "copingStrategies" | "usageGoals",
+    value: string,
+  ) {
     setAnswers((prev) => {
       const current = prev[key];
       const next = current.includes(value)
@@ -114,6 +153,14 @@ export function QuestionnaireWizard() {
     formData.set("stressors", answers.stressors);
     formData.set("support", answers.support.join("，") || "倾听与陪伴");
     formData.set("avoidances", answers.avoidances);
+    formData.set("livingSituation", answers.livingSituation);
+    formData.set("supportNetwork", answers.supportNetwork.join("，"));
+    formData.set("sleepQuality", String(answers.sleepQuality));
+    formData.set("sleepPattern", answers.sleepPattern);
+    formData.set("pastCounseling", answers.pastCounseling);
+    formData.set("copingStrategies", answers.copingStrategies.join("，"));
+    formData.set("usageGoals", answers.usageGoals.join("，"));
+    formData.set("checkInFrequency", answers.checkInFrequency);
     formData.set("nickname", answers.nickname);
     formData.set("tone", answers.tone);
     formData.set("responseLength", answers.responseLength);
@@ -293,6 +340,101 @@ export function QuestionnaireWizard() {
         )}
 
         {step === 3 && (
+          <StepShell title="生活与支持" subtitle="了解你的生活情境，帮助我们更贴切地理解你的处境。">
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <ChoiceSelect
+                  label="目前的居住情况"
+                  value={answers.livingSituation}
+                  options={LIVING_SITUATION_OPTIONS}
+                  onChange={(value) =>
+                    setAnswers((prev) => ({ ...prev, livingSituation: value }))
+                  }
+                />
+              </CardContent>
+            </Card>
+            <PillGroup
+              label="身边有谁能在你需要时提供支持？"
+              options={SUPPORT_NETWORK_OPTIONS}
+              selected={answers.supportNetwork}
+              onToggle={(value) => toggleInArray("supportNetwork", value)}
+              icon={Users}
+            />
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <Label>最近睡眠质量如何</Label>
+                <Slider
+                  value={[answers.sleepQuality]}
+                  onValueChange={(value) => {
+                    const next = Array.isArray(value) ? value[0] : value;
+                    setAnswers((prev) => ({ ...prev, sleepQuality: next }));
+                  }}
+                  min={0}
+                  max={10}
+                  step={1}
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>很差</span>
+                  <span>一般</span>
+                  <span>很好</span>
+                </div>
+                <ChoiceSelect
+                  label="睡眠规律性"
+                  value={answers.sleepPattern}
+                  options={SLEEP_PATTERN_OPTIONS}
+                  onChange={(value) =>
+                    setAnswers((prev) => ({ ...prev, sleepPattern: value }))
+                  }
+                />
+              </CardContent>
+            </Card>
+          </StepShell>
+        )}
+
+        {step === 4 && (
+          <StepShell title="过往经历与目标" subtitle="这些信息帮助 Daimon 更懂你已经尝试过什么、想要什么。">
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <ChoiceSelect
+                  label="是否有过心理咨询或治疗经历"
+                  value={answers.pastCounseling}
+                  options={PAST_COUNSELING_OPTIONS}
+                  onChange={(value) =>
+                    setAnswers((prev) => ({ ...prev, pastCounseling: value }))
+                  }
+                />
+              </CardContent>
+            </Card>
+            <PillGroup
+              label="平时会用什么方式应对压力或情绪？"
+              options={COPING_STRATEGY_OPTIONS}
+              selected={answers.copingStrategies}
+              onToggle={(value) => toggleInArray("copingStrategies", value)}
+              icon={Wind}
+            />
+            <PillGroup
+              label="希望通过 Daimon 达成什么？"
+              options={USAGE_GOAL_OPTIONS}
+              selected={answers.usageGoals}
+              onToggle={(value) => toggleInArray("usageGoals", value)}
+              icon={HeartHandshake}
+            />
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <ChoiceSelect
+                  label="希望 Daimon 多久主动联系你一次"
+                  value={answers.checkInFrequency}
+                  options={CHECK_IN_FREQUENCY_OPTIONS}
+                  onChange={(value) =>
+                    setAnswers((prev) => ({ ...prev, checkInFrequency: value }))
+                  }
+                />
+              </CardContent>
+            </Card>
+          </StepShell>
+        )}
+
+        {step === 5 && (
           <StepShell title="沟通偏好" subtitle="这些设置随时可以在「设置」页面里修改。">
             <Card>
               <CardContent className="space-y-4 pt-6">
@@ -369,7 +511,7 @@ export function QuestionnaireWizard() {
           </StepShell>
         )}
 
-        {step === 4 && (
+        {step === 6 && (
           <StepShell title="还有什么想说的吗？" subtitle="这些信息会帮助我们生成更贴近你的情绪画像。">
             <Card>
               <CardContent className="space-y-4 pt-6">
@@ -433,6 +575,82 @@ function StepShell({
         <p className="text-muted-foreground">{subtitle}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+function ChoiceSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Select
+        value={value}
+        onValueChange={(next) => {
+          if (next !== null) onChange(next);
+        }}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function PillGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+  icon: Icon,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  icon: typeof HeartHandshake;
+}) {
+  return (
+    <div>
+      <Label className="mb-3 block">{label}</Label>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const isSelected = selected.includes(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onToggle(option)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm transition-all",
+                isSelected
+                  ? "border-primary bg-secondary text-primary"
+                  : "border-border hover:border-primary/50",
+              )}
+            >
+              <Icon className="size-3.5" />
+              {option}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
