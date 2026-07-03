@@ -35,8 +35,47 @@ function streamAsSSE(result: Awaited<ReturnType<typeof chatService.streamChatTur
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      for await (const delta of result.deltas) {
-        controller.enqueue(encoder.encode(sseEvent(undefined, { delta })));
+      for await (const event of result.events) {
+        switch (event.type) {
+          case "text-delta":
+            controller.enqueue(
+              encoder.encode(sseEvent(undefined, { delta: event.delta })),
+            );
+            break;
+          case "tool-call":
+            controller.enqueue(
+              encoder.encode(
+                sseEvent("tool_call", {
+                  toolCallId: event.toolCallId,
+                  name: event.name,
+                  input: event.input,
+                }),
+              ),
+            );
+            break;
+          case "tool-result":
+            controller.enqueue(
+              encoder.encode(
+                sseEvent("tool_result", {
+                  toolCallId: event.toolCallId,
+                  name: event.name,
+                  output: event.output,
+                }),
+              ),
+            );
+            break;
+          case "tool-error":
+            controller.enqueue(
+              encoder.encode(
+                sseEvent("tool_error", {
+                  toolCallId: event.toolCallId,
+                  name: event.name,
+                  errorText: event.errorText,
+                }),
+              ),
+            );
+            break;
+        }
       }
 
       controller.enqueue(

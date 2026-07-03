@@ -14,11 +14,17 @@ import { buildChatContext } from "./context-builder";
 
 const MAX_TOOL_ROUNDS = 4;
 
+export type ChatStreamEvent =
+  | { type: "text-delta"; delta: string }
+  | { type: "tool-call"; toolCallId: string; name: string; input: unknown }
+  | { type: "tool-result"; toolCallId: string; name: string; output: string }
+  | { type: "tool-error"; toolCallId: string; name: string; errorText: string };
+
 export type ChatStreamResult = {
-  deltas: AsyncGenerator<string>;
+  events: AsyncGenerator<ChatStreamEvent>;
   safety: SafetyResult;
   personaId: string | null;
-  /** Populated as `deltas` is drained; read only after the generator completes. */
+  /** Populated as `events` is drained; read only after the generator completes. */
   proposals: PersonaChangeProposal[];
 };
 
@@ -45,7 +51,7 @@ export const chatService = {
       );
 
       return {
-        deltas: singleChunk(safetyCheck.response),
+        events: singleChunk(safetyCheck.response),
         safety: safetyCheck.result,
         personaId: null,
         proposals,
@@ -76,7 +82,7 @@ export const chatService = {
     ];
 
     return {
-      deltas: runAgentLoop(
+      events: runAgentLoop(
         viewerUserId,
         persona.id,
         input.sessionId,
@@ -90,8 +96,8 @@ export const chatService = {
   },
 };
 
-async function* singleChunk(text: string) {
-  yield text;
+async function* singleChunk(text: string): AsyncGenerator<ChatStreamEvent> {
+  yield { type: "text-delta", delta: text };
 }
 
 async function* runAgentLoop(
@@ -100,7 +106,7 @@ async function* runAgentLoop(
   sessionId: string,
   conversation: DeepSeekMessage[],
   proposals: PersonaChangeProposal[],
-): AsyncGenerator<string> {
+): AsyncGenerator<ChatStreamEvent> {
   let fullText = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -108,7 +114,7 @@ async function* runAgentLoop(
 
     if (!stream) {
       fullText = buildLocalFallbackReply();
-      yield fullText;
+      yield { type: "text-delta", delta: fullText };
       break;
     }
 
@@ -119,7 +125,7 @@ async function* runAgentLoop(
     for await (const event of stream) {
       if (event.type === "content") {
         roundText += event.delta;
-        yield event.delta;
+        yield { type: "text-delta", delta: event.delta };
       } else {
         finishReason = event.finishReason;
         toolCalls = event.toolCalls;
@@ -150,29 +156,47 @@ async function* runAgentLoop(
         // Malformed tool arguments - dispatchPersonaTool will reject via zod.
       }
 
-      const { toolResultText, proposal } = await dispatchPersonaTool(
-        viewerUserId,
-        personaId,
-        sessionId,
-        call.name,
-        args,
-      );
+      yield { type: "tool-call", toolCallId: call.id, name: call.name, input: args };
 
-      if (proposal) {
-        proposals.push({
-          id: proposal.id,
-          personaId: proposal.personaId,
-          sessionId: proposal.sessionId,
-          operation: proposal.operation,
-          targetType: proposal.targetType,
-          targetId: proposal.targetId,
-          proposedTitle: proposal.proposedTitle,
-          proposedContent: proposal.proposedContent,
-          reason: proposal.reason,
-          status: proposal.status,
-          createdAt: proposal.createdAt.toISOString(),
-          resolvedAt: proposal.resolvedAt?.toISOString() ?? null,
-        });
+      let toolResultText: string;
+      try {
+        const dispatchResult = await dispatchPersonaTool(
+          viewerUserId,
+          personaId,
+          sessionId,
+          call.name,
+          args,
+        );
+        toolResultText = dispatchResult.toolResultText;
+
+        if (dispatchResult.proposal) {
+          const proposal = dispatchResult.proposal;
+          proposals.push({
+            id: proposal.id,
+            personaId: proposal.personaId,
+            sessionId: proposal.sessionId,
+            operation: proposal.operation,
+            targetType: proposal.targetType,
+            targetId: proposal.targetId,
+            proposedTitle: proposal.proposedTitle,
+            proposedContent: proposal.proposedContent,
+            reason: proposal.reason,
+            status: proposal.status,
+            createdAt: proposal.createdAt.toISOString(),
+            resolvedAt: proposal.resolvedAt?.toISOString() ?? null,
+          });
+        }
+
+        yield {
+          type: "tool-result",
+          toolCallId: call.id,
+          name: call.name,
+          output: toolResultText,
+        };
+      } catch (error) {
+        const errorText = error instanceof Error ? error.message : "工具调用失败。";
+        toolResultText = `工具调用失败：${errorText}`;
+        yield { type: "tool-error", toolCallId: call.id, name: call.name, errorText };
       }
 
       conversation.push({
@@ -185,7 +209,7 @@ async function* runAgentLoop(
 
   if (!fullText.trim()) {
     fullText = "抱歉，我这次没能生成回复，可以再说一次吗？";
-    yield fullText;
+    yield { type: "text-delta", delta: fullText };
   }
 
   await sandboxRepository.appendMessage(viewerUserId, sessionId, "assistant", fullText);

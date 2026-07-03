@@ -15,7 +15,23 @@ import {
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ChatContainerContent,
+  ChatContainerRoot,
+  ChatContainerScrollAnchor,
+} from "@/components/ui/chat-container";
+import { Markdown } from "@/components/ui/markdown";
+import { Message, MessageContent } from "@/components/ui/message";
+import {
+  PromptInput,
+  PromptInputAction,
+  PromptInputActions,
+  PromptInputTextarea,
+} from "@/components/ui/prompt-input";
+import { PromptSuggestion } from "@/components/ui/prompt-suggestion";
+import { ScrollButton } from "@/components/ui/scroll-button";
+import { ThinkingBar } from "@/components/ui/thinking-bar";
+import { Tool, type ToolPart } from "@/components/ui/tool";
 import { cn } from "@/lib/utils";
 
 import { resolveProposalAction } from "./actions";
@@ -29,16 +45,45 @@ type Proposal = {
   reason: string;
 };
 
+type MessagePart =
+  | { type: "text"; text: string }
+  | {
+      type: "tool";
+      toolCallId: string;
+      name: string;
+      state: "input-available" | "output-available" | "output-error";
+      input?: unknown;
+      output?: string;
+      errorText?: string;
+    };
+
 type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  parts: MessagePart[];
+  createdAt: string;
+  proposals?: Proposal[];
+};
+
+type InitialChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   createdAt: string;
-  proposals?: Proposal[];
 };
 
 type SafetyLevel = "none" | "watch" | "crisis";
 
 const QUICK_REPLIES = ["具体的一件事", "只是一种笼统的感觉", "我只是想说说话"];
+
+const TOOL_LABELS: Record<string, string> = {
+  list_persona_sections: "查看人格章节列表",
+  read_persona_section: "读取人格章节",
+  list_persona_resources: "查看补充资源列表",
+  read_persona_resource: "读取补充资源",
+  propose_create_section: "提议新增章节",
+  propose_update_section: "提议修改章节",
+  propose_delete_section: "提议删除章节",
+  propose_create_resource: "提议新增资源",
+};
 
 function parseSSEEvent(raw: string): { event?: string; data?: string } {
   let event: string | undefined;
@@ -59,6 +104,26 @@ function parseSSEEvent(raw: string): { event?: string; data?: string } {
   return { event, data: dataLines.join("\n") };
 }
 
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+function parseToolOutput(output?: string): Record<string, unknown> | undefined {
+  if (output === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(output);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return { result: parsed };
+  } catch {
+    return { result: output };
+  }
+}
+
 export function ChatView({
   sessionId,
   companionName,
@@ -66,41 +131,55 @@ export function ChatView({
 }: {
   sessionId: string;
   companionName: string;
-  initialMessages: ChatMessage[];
+  initialMessages: InitialChatMessage[];
 }) {
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    initialMessages.map((message) => ({
+      role: message.role,
+      parts: [{ type: "text", text: message.content }],
+      createdAt: message.createdAt,
+    })),
+  );
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [safetyLevel, setSafetyLevel] = useState<SafetyLevel>("none");
-  const listRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
-    if (!listRef.current) return;
-    listRef.current.scrollTop = listRef.current.scrollHeight;
-    const lastBubble = listRef.current.lastElementChild;
-    if (lastBubble && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      gsap.fromTo(
-        lastBubble,
-        { opacity: 0, y: 12 },
-        { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
-      );
-    }
+    if (!lastMessageRef.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    gsap.fromTo(
+      lastMessageRef.current,
+      { opacity: 0, y: 12 },
+      { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+    );
   }, [messages.length]);
+
+  function updateLastMessage(updater: (message: ChatMessage) => ChatMessage) {
+    setMessages((prev) => {
+      const next = [...prev];
+      next[next.length - 1] = updater(next[next.length - 1]);
+      return next;
+    });
+  }
 
   async function handleSend(content?: string) {
     const text = (content ?? input).trim();
     if (!text || isSending) return;
 
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = "";
 
     const userMessage: ChatMessage = {
       role: "user",
-      content: text,
+      parts: [{ type: "text", text }],
       createdAt: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    const assistantPlaceholder: ChatMessage = {
+      role: "assistant",
+      parts: [],
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
     setIsSending(true);
 
     try {
@@ -116,13 +195,7 @@ export function ChatView({
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let assistantText = "";
       let buffer = "";
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "", createdAt: new Date().toISOString() },
-      ]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -144,40 +217,88 @@ export function ChatView({
             setSafetyLevel(payload.safetyLevel);
 
             if (payload.proposals.length > 0) {
-              setMessages((prev) => {
-                const next = [...prev];
-                next[next.length - 1] = {
-                  ...next[next.length - 1],
-                  proposals: payload.proposals,
-                };
-                return next;
-              });
+              updateLastMessage((message) => ({
+                ...message,
+                proposals: payload.proposals,
+              }));
             }
             continue;
           }
 
-          const payload = JSON.parse(data) as { delta: string };
-          assistantText += payload.delta;
-
-          setMessages((prev) => {
-            const next = [...prev];
-            next[next.length - 1] = {
-              ...next[next.length - 1],
-              content: assistantText,
+          if (event === "tool_call") {
+            const payload = JSON.parse(data) as {
+              toolCallId: string;
+              name: string;
+              input: unknown;
             };
-            return next;
+            updateLastMessage((message) => ({
+              ...message,
+              parts: [
+                ...message.parts,
+                {
+                  type: "tool",
+                  toolCallId: payload.toolCallId,
+                  name: payload.name,
+                  state: "input-available",
+                  input: payload.input,
+                },
+              ],
+            }));
+            continue;
+          }
+
+          if (event === "tool_result") {
+            const payload = JSON.parse(data) as {
+              toolCallId: string;
+              name: string;
+              output: string;
+            };
+            updateLastMessage((message) => ({
+              ...message,
+              parts: message.parts.map((part) =>
+                part.type === "tool" && part.toolCallId === payload.toolCallId
+                  ? { ...part, state: "output-available", output: payload.output }
+                  : part,
+              ),
+            }));
+            continue;
+          }
+
+          if (event === "tool_error") {
+            const payload = JSON.parse(data) as {
+              toolCallId: string;
+              name: string;
+              errorText: string;
+            };
+            updateLastMessage((message) => ({
+              ...message,
+              parts: message.parts.map((part) =>
+                part.type === "tool" && part.toolCallId === payload.toolCallId
+                  ? { ...part, state: "output-error", errorText: payload.errorText }
+                  : part,
+              ),
+            }));
+            continue;
+          }
+
+          const payload = JSON.parse(data) as { delta: string };
+          updateLastMessage((message) => {
+            const parts = [...message.parts];
+            const last = parts[parts.length - 1];
+            if (last && last.type === "text") {
+              parts[parts.length - 1] = { ...last, text: last.text + payload.delta };
+            } else {
+              parts.push({ type: "text", text: payload.delta });
+            }
+            return { ...message, parts };
           });
         }
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "消息发送失败，请稍后再试一次。",
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      updateLastMessage((message) => ({
+        ...message,
+        parts: [{ type: "text", text: "消息发送失败，请稍后再试一次。" }],
+      }));
     } finally {
       setIsSending(false);
     }
@@ -208,62 +329,67 @@ export function ChatView({
         </div>
       </header>
 
-      <div ref={listRef} className="chat-scroll mx-auto flex w-full max-w-[720px] flex-1 flex-col gap-4 overflow-y-auto px-4 py-6">
-        {messages.map((message, index) => (
-          <div key={index} className="flex flex-col gap-2">
-            <MessageBubble message={message} companionName={companionName} />
-            {message.proposals?.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} />
-            ))}
-          </div>
-        ))}
+      <ChatContainerRoot className="mx-auto w-full max-w-[720px] flex-1 flex-col">
+        <ChatContainerContent className="chat-scroll gap-4 px-4 py-6">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              ref={index === messages.length - 1 ? lastMessageRef : undefined}
+              className="flex flex-col gap-2"
+            >
+              <MessageBubble message={message} companionName={companionName} />
+              {message.proposals?.map((proposal) => (
+                <ProposalCard key={proposal.id} proposal={proposal} />
+              ))}
+            </div>
+          ))}
 
-        {messages.length > 0 && messages[messages.length - 1].role === "assistant" ? (
-          <div className="flex flex-wrap gap-2 pl-11">
-            {QUICK_REPLIES.map((reply) => (
-              <button
-                key={reply}
-                type="button"
-                onClick={() => handleSend(reply)}
-                className="rounded-full border border-primary/10 bg-secondary px-4 py-1.5 text-sm text-primary hover:bg-secondary/80"
-              >
-                {reply}
-              </button>
-            ))}
+          {messages.length > 0 && messages[messages.length - 1].role === "assistant" ? (
+            <div className="flex flex-wrap gap-2 pl-11">
+              {QUICK_REPLIES.map((reply) => (
+                <PromptSuggestion
+                  key={reply}
+                  size="sm"
+                  className="border-primary/10 bg-secondary text-primary hover:bg-secondary/80"
+                  onClick={() => handleSend(reply)}
+                >
+                  {reply}
+                </PromptSuggestion>
+              ))}
+            </div>
+          ) : null}
+          <ChatContainerScrollAnchor />
+        </ChatContainerContent>
+        <div className="pointer-events-none sticky bottom-4 flex justify-center">
+          <div className="pointer-events-auto">
+            <ScrollButton />
           </div>
-        ) : null}
-      </div>
+        </div>
+      </ChatContainerRoot>
 
       <div className="mx-auto w-full max-w-[720px] space-y-2 px-4 pb-6">
-        <div className="glass-panel flex items-end gap-2 rounded-3xl p-2 focus-within:border-primary">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(event) => {
-              setInput(event.target.value);
-              event.target.style.height = "";
-              event.target.style.height = `${event.target.scrollHeight}px`;
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-              }
-            }}
-            rows={1}
-            placeholder="输入消息…"
-            className="max-h-40 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none"
-          />
-          <Button
-            size="icon"
-            className="size-10 rounded-full"
-            disabled={isSending || !input.trim()}
-            onClick={() => handleSend()}
-            aria-label="发送"
-          >
-            <Send className="size-4" />
-          </Button>
-        </div>
+        <PromptInput
+          value={input}
+          onValueChange={setInput}
+          onSubmit={() => handleSend()}
+          isLoading={isSending}
+          className="glass-panel rounded-3xl focus-within:border-primary"
+        >
+          <PromptInputTextarea placeholder="输入消息…" className="max-h-40" />
+          <PromptInputActions className="justify-end">
+            <PromptInputAction tooltip="发送">
+              <Button
+                size="icon"
+                className="size-10 rounded-full"
+                disabled={isSending || !input.trim()}
+                onClick={() => handleSend()}
+                aria-label="发送"
+              >
+                <Send className="size-4" />
+              </Button>
+            </PromptInputAction>
+          </PromptInputActions>
+        </PromptInput>
         <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
           <Lock className="size-3" />
           端到端加密，仅你可见
@@ -281,38 +407,58 @@ function MessageBubble({
   companionName: string;
 }) {
   if (message.role === "user") {
+    const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("");
     return (
-      <div className="flex max-w-[85%] items-end gap-2 self-end">
-        <p className="rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground">
-          {message.content}
-        </p>
-      </div>
+      <Message className="max-w-[85%] items-end gap-2 self-end">
+        <MessageContent className="rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+          {text}
+        </MessageContent>
+      </Message>
     );
   }
 
   return (
-    <div className="flex max-w-[85%] items-start gap-2 self-start">
+    <Message className="max-w-[85%] items-start gap-2 self-start">
       <span
         className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
         aria-label={companionName}
       >
         <Brain className="size-4" />
       </span>
-      {message.content ? (
-        <p className="glass-panel rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
-          {message.content}
-        </p>
-      ) : (
+
+      {message.parts.length === 0 ? (
         <div
-          className="glass-panel flex w-48 flex-col gap-2 rounded-2xl rounded-bl-sm px-4 py-3"
+          className="glass-panel flex w-48 items-center rounded-2xl rounded-bl-sm px-4 py-3"
           aria-label={`${companionName} 正在思考`}
         >
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-4/5" />
-          <Skeleton className="h-3 w-2/3" />
+          <ThinkingBar text="正在思考" />
+        </div>
+      ) : (
+        <div className="glass-panel flex flex-col gap-1 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm">
+          {message.parts.map((part, index) =>
+            part.type === "text" ? (
+              <Markdown key={index} className="prose prose-sm dark:prose-invert max-w-none">
+                {part.text}
+              </Markdown>
+            ) : (
+              <Tool
+                key={index}
+                toolPart={
+                  {
+                    type: TOOL_LABELS[part.name] ?? part.name,
+                    state: part.state,
+                    input: toRecord(part.input),
+                    output: parseToolOutput(part.output),
+                    toolCallId: part.toolCallId,
+                    errorText: part.errorText,
+                  } satisfies ToolPart
+                }
+              />
+            ),
+          )}
         </div>
       )}
-    </div>
+    </Message>
   );
 }
 
