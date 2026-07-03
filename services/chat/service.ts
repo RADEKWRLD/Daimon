@@ -1,7 +1,7 @@
 import "server-only";
 
 import {
-  generateDeepSeekReply,
+  streamDeepSeekReply,
   type DeepSeekMessage,
 } from "@/services/ai/deepseek";
 import { shouldShortCircuitForSafety } from "@/services/safety/service";
@@ -10,17 +10,17 @@ import type { SafetyResult, UserId } from "@/types/domain";
 
 import { buildChatContext } from "./context-builder";
 
-export type ChatTurnResult = {
-  reply: string;
+export type ChatStreamResult = {
+  deltas: AsyncGenerator<string>;
   safety: SafetyResult;
   promptVersionId: string | null;
 };
 
 export const chatService = {
-  async handleChatTurn(
+  async streamChatTurn(
     viewerUserId: UserId,
     input: { sessionId: string; content: string },
-  ): Promise<ChatTurnResult> {
+  ): Promise<ChatStreamResult> {
     const safetyCheck = shouldShortCircuitForSafety(input.content);
 
     if (safetyCheck.response) {
@@ -38,7 +38,7 @@ export const chatService = {
       );
 
       return {
-        reply: safetyCheck.response,
+        deltas: singleChunk(safetyCheck.response),
         safety: safetyCheck.result,
         promptVersionId: null,
       };
@@ -73,24 +73,54 @@ export const chatService = {
       },
     ];
 
-    const generatedReply =
-      (await generateDeepSeekReply(modelMessages)) ??
-      buildLocalFallbackReply(activePrompt.name);
+    const upstream = await streamDeepSeekReply(modelMessages);
 
-    await sandboxRepository.appendMessage(
-      viewerUserId,
-      input.sessionId,
-      "assistant",
-      generatedReply,
-    );
+    const persistAssistantReply = async (fullText: string) => {
+      await sandboxRepository.appendMessage(
+        viewerUserId,
+        input.sessionId,
+        "assistant",
+        fullText,
+      );
+    };
+
+    if (!upstream) {
+      const fallback = buildLocalFallbackReply(activePrompt.name);
+      await persistAssistantReply(fallback);
+
+      return {
+        deltas: singleChunk(fallback),
+        safety: safetyCheck.result,
+        promptVersionId: activePrompt.promptVersionId,
+      };
+    }
 
     return {
-      reply: generatedReply,
+      deltas: persistOnComplete(upstream, persistAssistantReply),
       safety: safetyCheck.result,
       promptVersionId: activePrompt.promptVersionId,
     };
   },
 };
+
+async function* singleChunk(text: string) {
+  yield text;
+}
+
+/** Forwards deltas as they arrive, then persists the assembled full text once the source completes. */
+async function* persistOnComplete(
+  source: AsyncGenerator<string>,
+  onComplete: (fullText: string) => Promise<void>,
+) {
+  let fullText = "";
+
+  for await (const delta of source) {
+    fullText += delta;
+    yield delta;
+  }
+
+  await onComplete(fullText);
+}
 
 function buildLocalFallbackReply(agentName: string) {
   return [

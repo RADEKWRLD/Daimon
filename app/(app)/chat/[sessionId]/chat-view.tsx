@@ -6,6 +6,7 @@ import { Brain, Lock, Send, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type ChatMessage = {
@@ -17,6 +18,25 @@ type ChatMessage = {
 type SafetyLevel = "none" | "watch" | "crisis";
 
 const QUICK_REPLIES = ["具体的一件事", "只是一种笼统的感觉", "我只是想说说话"];
+
+function parseSSEEvent(raw: string): { event?: string; data?: string } {
+  let event: string | undefined;
+  const dataLines: string[] = [];
+
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trim());
+    }
+  }
+
+  if (dataLines.length === 0) {
+    return {};
+  }
+
+  return { event, data: dataLines.join("\n") };
+}
 
 export function ChatView({
   sessionId,
@@ -69,10 +89,6 @@ export function ChatView({
         body: JSON.stringify({ sessionId, content: text }),
       });
 
-      const level = (response.headers.get("x-daimon-safety-level") ??
-        "none") as SafetyLevel;
-      setSafetyLevel(level);
-
       if (!response.body) {
         throw new Error("空响应");
       }
@@ -80,6 +96,7 @@ export function ChatView({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
+      let buffer = "";
 
       setMessages((prev) => [
         ...prev,
@@ -89,16 +106,33 @@ export function ChatView({
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        assistantText += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
 
-        setMessages((prev) => {
-          const next = [...prev];
-          next[next.length - 1] = {
-            ...next[next.length - 1],
-            content: assistantText,
-          };
-          return next;
-        });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const rawEvent of events) {
+          const { event, data } = parseSSEEvent(rawEvent);
+          if (!data) continue;
+
+          if (event === "done") {
+            const payload = JSON.parse(data) as { safetyLevel: SafetyLevel };
+            setSafetyLevel(payload.safetyLevel);
+            continue;
+          }
+
+          const payload = JSON.parse(data) as { delta: string };
+          assistantText += payload.delta;
+
+          setMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = {
+              ...next[next.length - 1],
+              content: assistantText,
+            };
+            return next;
+          });
+        }
       }
     } catch {
       setMessages((prev) => [
@@ -224,9 +258,20 @@ function MessageBubble({
       >
         <Brain className="size-4" />
       </span>
-      <p className="glass-panel rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
-        {message.content || "…"}
-      </p>
+      {message.content ? (
+        <p className="glass-panel rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm whitespace-pre-wrap">
+          {message.content}
+        </p>
+      ) : (
+        <div
+          className="glass-panel flex w-48 flex-col gap-2 rounded-2xl rounded-bl-sm px-4 py-3"
+          aria-label={`${companionName} 正在思考`}
+        >
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      )}
     </div>
   );
 }

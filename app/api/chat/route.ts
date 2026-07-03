@@ -19,11 +19,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await chatService.handleChatTurn(user.id, parsed.data);
+    const result = await chatService.streamChatTurn(user.id, parsed.data);
 
-    return streamText(result.reply, {
-      "x-daimon-safety-level": result.safety.level,
-      "x-daimon-prompt-version-id": result.promptVersionId ?? "",
+    return streamAsSSE(result.deltas, {
+      safetyLevel: result.safety.level,
+      promptVersionId: result.promptVersionId ?? "",
     });
   } catch (error) {
     const message =
@@ -33,34 +33,33 @@ export async function POST(request: Request) {
   }
 }
 
-function streamText(content: string, extraHeaders: Record<string, string>) {
+function streamAsSSE(
+  deltas: AsyncGenerator<string>,
+  done: { safetyLevel: string; promptVersionId: string },
+) {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      for (const chunk of chunkText(content, 32)) {
-        controller.enqueue(encoder.encode(chunk));
+      for await (const delta of deltas) {
+        controller.enqueue(encoder.encode(sseEvent(undefined, { delta })));
       }
 
+      controller.enqueue(encoder.encode(sseEvent("done", done)));
       controller.close();
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-store",
-      ...extraHeaders,
+      Connection: "keep-alive",
     },
   });
 }
 
-function chunkText(content: string, size: number) {
-  const chunks: string[] = [];
-
-  for (let index = 0; index < content.length; index += size) {
-    chunks.push(content.slice(index, index + size));
-  }
-
-  return chunks;
+function sseEvent(event: string | undefined, data: unknown) {
+  const eventLine = event ? `event: ${event}\n` : "";
+  return `${eventLine}data: ${JSON.stringify(data)}\n\n`;
 }
