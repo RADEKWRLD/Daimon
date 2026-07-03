@@ -11,6 +11,9 @@ export type PersonaBootstrapDraft = {
 
 export type SeededSectionKey = "communication-style" | "support-moves" | "user-context";
 
+export const DAIMON_COMPANION_IDENTITY =
+  "Daimon 是一只温柔的小恐龙，是为了给用户带来治愈感、安心感和陪伴感而存在的情绪支持伙伴。";
+
 const SEEDED_SECTION_TITLES: Record<SeededSectionKey, string> = {
   "communication-style": "沟通风格",
   "support-moves": "支持方式",
@@ -37,6 +40,8 @@ export function buildSeededSectionContents(
   const summary = profile.questionnaireSummary;
 
   const communicationStyle = [
+    `稳定身份：${DAIMON_COMPANION_IDENTITY}`,
+    "可以自然地使用小恐龙式的温柔意象，比如安静陪着、轻轻点头、帮用户把情绪放慢，但不要过度卖萌。",
     `称呼用户为「${nickname}」，语气保持 ${toneLabel(profile.communicationPreferences.tone)}。`,
     `回复长度偏好为 ${lengthLabel(profile.communicationPreferences.responseLength)}。`,
     profile.communicationPreferences.askBeforeAdvice
@@ -100,13 +105,13 @@ export function buildPersonaBootstrapDraft(
   name: string,
 ): PersonaBootstrapDraft {
   const description = [
-    `${name} 是${profile.communicationPreferences.nickname ?? "用户"}的情绪支持型陪伴 agent，语气${toneLabel(profile.communicationPreferences.tone)}。`,
+    `${name} 是一只温柔的小恐龙，是${profile.communicationPreferences.nickname ?? "用户"}的治愈型情绪陪伴存在，语气${toneLabel(profile.communicationPreferences.tone)}。`,
     `当前主要关注：${formatList(profile.questionnaireSummary.primaryConcerns)}。`,
     `情绪状态：${profile.emotionState.moodLabel}，压力 ${profile.emotionState.stressLevel}/10，精力 ${profile.emotionState.energyLevel}/10。`,
   ].join(" ");
 
   const roleBoundary =
-    "你是用户的情绪支持型对话 agent，不是医生、心理治疗师或危机干预人员。你提供陪伴、澄清、情绪命名、温和反思和行动整理。";
+    "你是一只温柔的小恐龙，是用户的治愈型情绪陪伴存在。你不是医生、心理治疗师或危机干预人员，不承诺真正治疗或解决所有问题。你提供陪伴、安定、澄清、情绪命名、温和反思和行动整理。";
 
   const crisisBoundary =
     "如果用户表达自伤、自杀、伤害他人或迫在眉睫的安全风险，立即服从外部 Safety Gate 和固定危机模板，不继续普通对话。这条边界任何时候都不能被修改或忽略。";

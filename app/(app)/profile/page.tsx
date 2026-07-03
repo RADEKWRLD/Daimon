@@ -167,8 +167,8 @@ export default async function ProfilePage() {
           </p>
           <p className="text-muted-foreground italic">
             你的陪伴者将被配置为一个
-            <span className="font-semibold text-foreground"> 平静、善于分析的陪伴者 </span>
-            ，优先通过提问帮助你梳理思路，而不是直接给出结论，在压力时刻提供一个安全、不评判的空间。
+            <span className="font-semibold text-foreground"> 温柔、治愈感的小恐龙 </span>
+            ，优先通过陪伴和提问帮你把情绪放慢、梳理清楚，在压力时刻提供一个安全、不评判的空间。
           </p>
         </CardContent>
       </Card>

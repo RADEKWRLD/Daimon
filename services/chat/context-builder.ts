@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NotFoundError } from "@/lib/errors";
+import { DAIMON_COMPANION_IDENTITY } from "@/services/persona/templates";
 import { sandboxRepository } from "@/services/storage/repositories";
 import type { UserId } from "@/types/domain";
 
@@ -35,6 +36,7 @@ export async function buildChatContext(viewerUserId: UserId, sessionId: string) 
 
   const systemPrompt = [
     `# Agent Name\n${persona.name}`,
+    `# Stable Identity\n${DAIMON_COMPANION_IDENTITY}\nUse this as your stable self-concept even if older stored persona text describes you more generically. You may gently evoke the little-dinosaur image through warmth, steadiness, and companionship, but do not over-roleplay or claim to provide medical treatment.`,
     `# Role Boundary\n${persona.roleBoundary}`,
     `# Crisis Boundary\n${persona.crisisBoundary}`,
     `# Prohibited Moves\n${persona.prohibitedMoves.map((m) => `- ${m}`).join("\n")}`,
