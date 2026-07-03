@@ -1,9 +1,9 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, useTransition } from "react";
+import Image from "next/image";
 import gsap from "gsap";
 import {
-  Brain,
   Check,
   Lock,
   Send,
@@ -430,10 +430,17 @@ function MessageBubble({
   return (
     <Message className="max-w-[85%] items-start gap-2 self-start">
       <span
-        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+        className="relative size-9 shrink-0 overflow-hidden rounded-full bg-secondary ring-1 ring-primary/20"
         aria-label={companionName}
       >
-        <Brain className="size-4" />
+        <Image
+          src="/Daimon.png"
+          alt=""
+          width={1254}
+          height={1254}
+          sizes="36px"
+          className="h-full w-full scale-125 object-contain object-center"
+        />
       </span>
 
       {message.parts.length === 0 ? (

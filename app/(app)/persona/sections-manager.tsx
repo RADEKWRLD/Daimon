@@ -97,7 +97,7 @@ export function SectionsManager({
       {sections.length === 0 ? (
         <Card className="glass-card">
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            还没有章节，点击"新增章节"手动添加，或者在对话里让 Daimon 自己提议。
+            还没有章节，点击&quot;新增章节&quot;手动添加，或者在对话里让 Daimon 自己提议。
           </CardContent>
         </Card>
       ) : (

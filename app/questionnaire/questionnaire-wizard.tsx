@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, useTransition } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import gsap from "gsap";
 import {
@@ -185,19 +186,29 @@ export function QuestionnaireWizard() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="relative isolate flex min-h-screen flex-col overflow-hidden">
+      <div className="pointer-events-none fixed top-1/2 left-1/2 z-0 size-[320px] -translate-x-1/2 -translate-y-1/2 opacity-25 sm:size-[420px] md:opacity-30">
+        <Image
+          src="/head_up.png"
+          alt=""
+          fill
+          priority
+          sizes="(max-width: 640px) 320px, 420px"
+          className="object-contain"
+        />
+      </div>
       <header className="glass-panel sticky top-0 z-20">
         <div className="mx-auto flex max-w-[720px] items-center justify-between px-4 py-3">
           <button
             onClick={handleBack}
-            className="group flex items-center gap-1 text-sm text-muted-foreground"
+            className="group flex w-12 items-center gap-1 text-sm text-muted-foreground"
           >
             <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
           </button>
-          <span className="text-sm font-medium text-muted-foreground">
+          <span className="rounded-full bg-background/80 px-4 py-2 text-sm font-semibold text-foreground shadow-sm ring-1 ring-border/60">
             第 {step + 1} 步 / 共 {TOTAL_STEPS} 步
           </span>
-          <span className="w-4" />
+          <span className="w-12" />
         </div>
         <div className="mx-auto h-2 max-w-[720px] rounded-full bg-muted px-4">
           <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -206,7 +217,7 @@ export function QuestionnaireWizard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[720px] flex-1 px-4 pt-8 pb-32">
+      <main className="relative z-10 mx-auto w-full max-w-[720px] flex-1 px-4 pt-8 pb-32">
         {step === 0 && (
           <StepShell title="最近感觉怎么样？" subtitle="没有标准答案，这些回答只是帮助我们更好地了解你。">
             <Card>
