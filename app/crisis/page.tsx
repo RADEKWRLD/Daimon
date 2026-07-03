@@ -41,9 +41,9 @@ export default function CrisisPage() {
                   <PhoneCall className="size-5" />
                 </span>
                 <div>
-                  <h2 className="text-lg font-semibold">全国心理援助热线</h2>
+                  <h2 className="text-lg font-semibold">深圳心理援助热线</h2>
                   <p className="text-sm text-muted-foreground">
-                    24 小时免费、保密的心理危机支持与干预服务。
+                    深圳市 12356 心理援助热线已并入广东省 12356 平台，提供 24 小时免费、保密的心理疏导、情绪支持与危机干预服务。
                   </p>
                 </div>
               </div>
@@ -57,7 +57,13 @@ export default function CrisisPage() {
                   variant="outline"
                   pill
                   className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                  render={<a href="tel:01082951332">北京：010-82951332</a>}
+                  render={<a href="tel:075525603094">罗湖急诊：0755-25603094</a>}
+                />
+                <Button
+                  variant="outline"
+                  pill
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  render={<a href="tel:075525600120">坪山急诊：0755-25600120</a>}
                 />
               </div>
             </CardContent>
@@ -70,7 +76,7 @@ export default function CrisisPage() {
               </span>
               <h2 className="text-lg font-semibold">情绪树洞 / 在线倾诉</h2>
               <p className="text-sm text-muted-foreground">
-                如果暂时不方便通话，可以搜索所在城市的心理援助热线或平台在线客服获取文字支持。
+                如果暂时不方便通话，可以先联系可信任的人陪伴你；需要专业支持时，优先拨打深圳 12356 心理援助热线。
               </p>
             </CardContent>
           </Card>
