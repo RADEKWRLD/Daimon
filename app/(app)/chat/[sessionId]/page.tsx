@@ -12,9 +12,10 @@ export default async function ChatSessionPage({
   const { sessionId } = await params;
   const caller = await createServerCaller();
 
-  const [persona, initialMessages] = await Promise.all([
+  const [persona, initialMessages, pendingProposals] = await Promise.all([
     caller.persona.getOverview(),
     caller.session.getMessages({ sessionId }).catch(() => null),
+    caller.persona.listPendingProposals({ sessionId }).catch(() => []),
   ]);
 
   if (initialMessages === null) {
@@ -30,6 +31,7 @@ export default async function ChatSessionPage({
       sessionId={sessionId}
       companionName={persona.name}
       initialMessages={initialMessages}
+      pendingProposals={pendingProposals}
     />
   );
 }

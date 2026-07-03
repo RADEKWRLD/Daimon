@@ -134,6 +134,10 @@ export const personaService = {
   async listRecentProposals(viewerUserId: UserId, personaId: string) {
     return sandboxRepository.listRecentResolvedProposals(viewerUserId, personaId);
   },
+
+  async listPendingProposals(viewerUserId: UserId, sessionId: string) {
+    return sandboxRepository.listPendingProposals(viewerUserId, sessionId);
+  },
 };
 
 function slugify(text: string) {

@@ -98,4 +98,10 @@ export const personaRouter = createTRPCRouter({
     .query(({ ctx, input }) =>
       personaService.listRecentProposals(ctx.user.id, input.personaId),
     ),
+
+  listPendingProposals: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .query(({ ctx, input }) =>
+      personaService.listPendingProposals(ctx.user.id, input.sessionId),
+    ),
 });

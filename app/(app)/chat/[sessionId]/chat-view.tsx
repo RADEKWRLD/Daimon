@@ -128,10 +128,12 @@ export function ChatView({
   sessionId,
   companionName,
   initialMessages,
+  pendingProposals,
 }: {
   sessionId: string;
   companionName: string;
   initialMessages: InitialChatMessage[];
+  pendingProposals: Proposal[];
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     initialMessages.map((message) => ({
@@ -343,6 +345,14 @@ export function ChatView({
               ))}
             </div>
           ))}
+
+          {pendingProposals.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {pendingProposals.map((proposal) => (
+                <ProposalCard key={proposal.id} proposal={proposal} />
+              ))}
+            </div>
+          ) : null}
 
           {messages.length > 0 && messages[messages.length - 1].role === "assistant" ? (
             <div className="flex flex-wrap gap-2 pl-11">

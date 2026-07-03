@@ -561,6 +561,26 @@ export const sandboxRepository = {
       .limit(limit);
   },
 
+  async listPendingProposals(viewerUserId: UserId, sessionId: string) {
+    const db = getDb();
+    const session = await this.getSession(viewerUserId, sessionId);
+
+    if (!session) {
+      throw new NotFoundError("Session was not found in this sandbox.");
+    }
+
+    return db
+      .select()
+      .from(personaChangeProposals)
+      .where(
+        and(
+          eq(personaChangeProposals.sessionId, sessionId),
+          eq(personaChangeProposals.status, "pending"),
+        ),
+      )
+      .orderBy(personaChangeProposals.createdAt);
+  },
+
   async createSession(viewerUserId: UserId, title = "New session") {
     const db = getDb();
     await this.ensureUser(viewerUserId);
